@@ -8,7 +8,7 @@ const Vec3 = struct {
     z: f32,
     const Self = @This();
 
-    pub fn length(self: *Self) f32 {
+    pub fn length(self: *const Self) f32 {
         return @sqrt(self.length_squared());
     }
 
@@ -51,6 +51,10 @@ const Vec3 = struct {
     pub fn unit(self: *const Self) Vec3 {
         return self.div(self.length());
     }
+
+    pub fn pretty_print(self: *const Self) void {
+        std.debug.print("{d} {d} {d}\n", .{ self.x, self.y, self.z });
+    }
 };
 
 const Ray = struct {
@@ -64,7 +68,7 @@ const Ray = struct {
 };
 
 // image settings
-const WIDTH: u32 = 50;
+const WIDTH: u32 = 500;
 const ASPECT_RATIO: f32 = 16.0 / 9.0;
 const HEIGHT: u32 = @intFromFloat(WIDTH / ASPECT_RATIO);
 
@@ -88,13 +92,16 @@ const VIEWPORT_UPPER_LEFT = CAMERA_CENTER.sub_vec(Vec3{ .x = 0, .y = 0, .z = FOC
 const PIXEL_00_LOCATION = VIEWPORT_UPPER_LEFT.add(0.5).mul_vec(VIEWPORT_HORIZONTAL_PIXEL_DELTA.add_vec(VIEWPORT_VERTICAL_PIXEL_DELTA));
 
 fn calculate_pixel_colour(ray: Ray) Vec3 {
-    std.debug.print("{}", .{ray.origin.x});
-    return Vec3{ .x = 0, .y = 0, .z = 0 };
+    const unit_direction = ray.direction.unit();
+    const a = 0.5 * (unit_direction.y + 1);
+    const WHITE = Vec3{ .x = 1, .y = 1, .z = 1 };
+    const BLUE = Vec3{ .x = 0.5, .y = 0.7, .z = 1.0 };
+    return WHITE.mul(1.0 - a).add_vec(BLUE.mul(a));
 }
 
 fn write_colour(image_buffer: *std.ArrayList(u8), colour: Vec3) !void {
-    var r = try std.fmt.allocPrint(std.heap.page_allocator, "{}", .{@as(u8, @intFromFloat(255.0 * colour.x))});
-    var g = try std.fmt.allocPrint(std.heap.page_allocator, "{}", .{@as(u8, @intFromFloat(255.0 * colour.y))});
+    var r = try std.fmt.allocPrint(std.heap.page_allocator, "{} ", .{@as(u8, @intFromFloat(255.0 * colour.x))});
+    var g = try std.fmt.allocPrint(std.heap.page_allocator, "{} ", .{@as(u8, @intFromFloat(255.0 * colour.y))});
     var b = try std.fmt.allocPrint(std.heap.page_allocator, "{}", .{@as(u8, @intFromFloat(255.0 * colour.z))});
     try write_str(image_buffer, r);
     try write_str(image_buffer, g);
@@ -112,6 +119,7 @@ fn map(x: u32, in_min: u32, in_max: u32, out_min: u32, out_max: u32) u32 {
 
 fn render(image_buffer: *std.ArrayList(u8)) !void {
     for ([_]u32{0} ** HEIGHT, 0..) |_, y| {
+        std.debug.print("doing row {}/{}\n", .{ y, HEIGHT });
         for ([_]u32{0} ** WIDTH, 0..) |_, x| {
 
             // var pixel_center = pixel00_location
