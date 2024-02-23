@@ -66,13 +66,15 @@ const Ray = struct {
     direction: Vec3,
     const Self = @This();
 
-    pub fn at(self: *Self, t: f32) Vec3 {
-        return self.origin.add(self.direction.mul(t));
+    pub fn at(self: *const Self, t: f32) Vec3 {
+        return self.origin.add_vec(self.direction.mul(t));
     }
 };
 
+// 4k width = 3840
+// 2k width = 2048
 // image settings
-const WIDTH: u32 = 400;
+const WIDTH: u32 = 3840;
 const ASPECT_RATIO: f32 = 16.0 / 9.0;
 const HEIGHT: u32 = @intFromFloat(WIDTH / ASPECT_RATIO);
 
@@ -96,7 +98,7 @@ const VIEWPORT_UPPER_LEFT = CAMERA_CENTER.sub_vec(Vec3{ .x = 0, .y = 0, .z = FOC
 // const PIXEL_00_LOCATION = VIEWPORT_UPPER_LEFT.add(0.5).mul_vec(VIEWPORT_HORIZONTAL_PIXEL_DELTA.add_vec(VIEWPORT_VERTICAL_PIXEL_DELTA));
 const PIXEL_00_LOCATION = ((VIEWPORT_HORIZONTAL_PIXEL_DELTA.add_vec(VIEWPORT_VERTICAL_PIXEL_DELTA)).mul(0.5)).add_vec(VIEWPORT_UPPER_LEFT);
 
-fn hit_sphere(center: Vec3, radius: f32, ray: Ray) !bool {
+fn hit_sphere(center: Vec3, radius: f32, ray: Ray) !f32 {
     // std.debug.print("checking if hit sphere, ray:\n", .{});
     // ray.direction.pretty_print();
 
@@ -107,12 +109,27 @@ fn hit_sphere(center: Vec3, radius: f32, ray: Ray) !bool {
     const c = Vec3.dot(origin_to_center, origin_to_center) - (radius * radius);
     const discriminant = b * b - 4 * a * c;
     // std.debug.print("discriminant {d}\n", .{discriminant});
-    return discriminant >= 0;
+    // return discriminant >= 0;
+
+    if (discriminant < 0) {
+        return -1.0;
+    } else {
+        return (-b - @sqrt(discriminant)) / (2.0 * a);
+    }
 }
 
 fn calculate_pixel_colour(ray: Ray) !Vec3 {
-    if (try hit_sphere(Vec3{ .x = 0, .y = 0, .z = -3 }, 0.5, ray)) {
-        return Vec3{ .x = 1, .y = 0, .z = 0 };
+    var t = try hit_sphere(Vec3{ .x = 0, .y = 0, .z = -3 }, 0.5, ray);
+    if (t > 0.0) {
+        var n = ray.at(t).sub_vec(Vec3{ .x = 0, .y = 0, .z = -1 }).unit();
+        var c = Vec3{ .x = n.x + 1, .y = n.y + 1, .z = n.z + 1 };
+        return c.mul(0.5);
+    }
+    var t_again = try hit_sphere(Vec3{ .x = 2, .y = 1, .z = -8 }, 3, ray);
+    if (t_again > 0.0) {
+        var n = ray.at(t).sub_vec(Vec3{ .x = 0, .y = 0, .z = -1 }).unit();
+        var c = Vec3{ .x = n.x + 1, .y = n.y + 1, .z = n.z + 1 };
+        return c.mul(0.5);
     }
     const unit_direction = ray.direction.unit();
     const a = 0.5 * (unit_direction.y + 1);
