@@ -28,6 +28,10 @@ const Vec3 = struct {
         return Vec3{ .x = self.x + value, .y = self.y + value, .z = self.z + value };
     }
 
+    pub fn sub(self: *const Self, value: f32) Vec3 {
+        return Vec3{ .x = self.x - value, .y = self.y - value, .z = self.z - value };
+    }
+
     pub fn add_vec(self: *const Self, value: Vec3) Vec3 {
         return Vec3{ .x = self.x + value.x, .y = self.y + value.y, .z = self.z + value.z };
     }
@@ -52,8 +56,8 @@ const Vec3 = struct {
         return self.div(self.length());
     }
 
-    pub fn pretty_print(self: *const Self) void {
-        std.debug.print("{d} {d} {d}\n", .{ self.x, self.y, self.z });
+    pub fn pretty_print(self: *const Self) ![]u8 {
+        return try std.fmt.allocPrint(std.heap.page_allocator, "{d} {d} {d}", .{ self.x, self.y, self.z });
     }
 };
 
@@ -68,14 +72,14 @@ const Ray = struct {
 };
 
 // image settings
-const WIDTH: u32 = 500;
+const WIDTH: u32 = 400;
 const ASPECT_RATIO: f32 = 16.0 / 9.0;
 const HEIGHT: u32 = @intFromFloat(WIDTH / ASPECT_RATIO);
 
 // camera settings
-const VIEWPORT_HEIGHT = 2.0;
-const VIEWPORT_WIDTH = VIEWPORT_HEIGHT * @as(f32, @floatFromInt(WIDTH / HEIGHT));
 const FOCAL_LENGTH = 1.0;
+const VIEWPORT_HEIGHT = 2.0;
+const VIEWPORT_WIDTH = VIEWPORT_HEIGHT * (@as(f32, @floatFromInt(WIDTH / HEIGHT)));
 const CAMERA_CENTER = Vec3{ .x = 0, .y = 0, .z = 0 };
 
 // camera/screen settings
@@ -89,9 +93,27 @@ const VIEWPORT_VERTICAL_PIXEL_DELTA = VIEWPORT_MAX_VERTICAL.div(HEIGHT);
 
 // location of upper left pixel
 const VIEWPORT_UPPER_LEFT = CAMERA_CENTER.sub_vec(Vec3{ .x = 0, .y = 0, .z = FOCAL_LENGTH }).sub_vec(VIEWPORT_MAX_HORIZONTAL.div(2)).sub_vec(VIEWPORT_MAX_VERTICAL.div(2));
-const PIXEL_00_LOCATION = VIEWPORT_UPPER_LEFT.add(0.5).mul_vec(VIEWPORT_HORIZONTAL_PIXEL_DELTA.add_vec(VIEWPORT_VERTICAL_PIXEL_DELTA));
+// const PIXEL_00_LOCATION = VIEWPORT_UPPER_LEFT.add(0.5).mul_vec(VIEWPORT_HORIZONTAL_PIXEL_DELTA.add_vec(VIEWPORT_VERTICAL_PIXEL_DELTA));
+const PIXEL_00_LOCATION = ((VIEWPORT_HORIZONTAL_PIXEL_DELTA.add_vec(VIEWPORT_VERTICAL_PIXEL_DELTA)).mul(0.5)).add_vec(VIEWPORT_UPPER_LEFT);
 
-fn calculate_pixel_colour(ray: Ray) Vec3 {
+fn hit_sphere(center: Vec3, radius: f32, ray: Ray) !bool {
+    // std.debug.print("checking if hit sphere, ray:\n", .{});
+    // ray.direction.pretty_print();
+
+    const origin_to_center = ray.origin.sub_vec(center);
+    // std.debug.print("origin_to_center {s}\n", .{try origin_to_center.pretty_print()});
+    const a = Vec3.dot(ray.direction, ray.direction);
+    const b = 2 * Vec3.dot(origin_to_center, ray.direction);
+    const c = Vec3.dot(origin_to_center, origin_to_center) - (radius * radius);
+    const discriminant = b * b - 4 * a * c;
+    // std.debug.print("discriminant {d}\n", .{discriminant});
+    return discriminant >= 0;
+}
+
+fn calculate_pixel_colour(ray: Ray) !Vec3 {
+    if (try hit_sphere(Vec3{ .x = 0, .y = 0, .z = -3 }, 0.5, ray)) {
+        return Vec3{ .x = 1, .y = 0, .z = 0 };
+    }
     const unit_direction = ray.direction.unit();
     const a = 0.5 * (unit_direction.y + 1);
     const WHITE = Vec3{ .x = 1, .y = 1, .z = 1 };
@@ -121,11 +143,12 @@ fn render(image_buffer: *std.ArrayList(u8)) !void {
     for ([_]u32{0} ** HEIGHT, 0..) |_, y| {
         std.debug.print("doing row {}/{}\n", .{ y, HEIGHT });
         for ([_]u32{0} ** WIDTH, 0..) |_, x| {
-
-            // var pixel_center = pixel00_location
-            var ray_direction = PIXEL_00_LOCATION.add_vec(VIEWPORT_HORIZONTAL_PIXEL_DELTA.mul(@floatFromInt(x))).add_vec(VIEWPORT_VERTICAL_PIXEL_DELTA.mul(@floatFromInt(y)));
+            // todo this is probably not correct but it works
+            var y_vec = VIEWPORT_VERTICAL_PIXEL_DELTA.mul(@as(f32, @floatFromInt(y)) / ASPECT_RATIO + ((WIDTH - HEIGHT) / ASPECT_RATIO / 2));
+            var pixel_center = PIXEL_00_LOCATION.add_vec(VIEWPORT_HORIZONTAL_PIXEL_DELTA.mul(@floatFromInt(x))).add_vec(y_vec);
+            var ray_direction = pixel_center.sub_vec(CAMERA_CENTER);
             var ray = Ray{ .origin = CAMERA_CENTER, .direction = ray_direction };
-            var pixel_colour = calculate_pixel_colour(ray);
+            var pixel_colour = try calculate_pixel_colour(ray);
             try write_colour(image_buffer, pixel_colour);
         }
     }
@@ -150,6 +173,17 @@ fn process_filename_arg(filename: []const u8) !void {
 }
 
 pub fn main() !void {
+    std.debug.print("VIEWPORT_HEIGHT {d}\n", .{VIEWPORT_HEIGHT});
+    std.debug.print("VIEWPORT_WIDTH {d}\n", .{VIEWPORT_WIDTH});
+    std.debug.print("VIEWPORT_WIDTH {d}\n", .{FOCAL_LENGTH});
+    std.debug.print("CAMERA_CENTER {s}\n", .{try CAMERA_CENTER.pretty_print()});
+    std.debug.print("VIEWPORT_MAX_HORIZONTAL {s}\n", .{try VIEWPORT_MAX_HORIZONTAL.pretty_print()});
+    std.debug.print("VIEWPORT_MAX_VERTICAL {s}\n", .{try VIEWPORT_MAX_VERTICAL.pretty_print()});
+    std.debug.print("VIEWPORT_HORIZONTAL_PIXEL_DELTA {s}\n", .{try VIEWPORT_HORIZONTAL_PIXEL_DELTA.pretty_print()});
+    std.debug.print("VIEWPORT_VERTICAL_PIXEL_DELTA {s}\n", .{try VIEWPORT_VERTICAL_PIXEL_DELTA.pretty_print()});
+    std.debug.print("VIEWPORT_UPPER_LEFT {s}\n", .{try VIEWPORT_UPPER_LEFT.pretty_print()});
+    std.debug.print("PIXEL_00_LOCATION {s}\n", .{try PIXEL_00_LOCATION.pretty_print()});
+
     var image_buffer = std.ArrayList(u8).init(std.heap.page_allocator);
 
     defer image_buffer.deinit();
